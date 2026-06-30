@@ -63,7 +63,6 @@
     filter: drop-shadow(0 8px 6px rgba(20,50,63,.3));
   }
   .shoe.dragging { cursor: grabbing; }
-  .shoe.flying { transition: transform 1.15s cubic-bezier(.18,.7,.3,1); }
 
   /* 案内 */
   .hint {
@@ -90,6 +89,29 @@
   @keyframes bob {
     0%,100% { transform: translateX(-50%) translateY(0); opacity: .5; }
     50%     { transform: translateX(-50%) translateY(-8px); opacity: 1; }
+  }
+
+  /* 掛け声「あした天気にな～れ」 */
+  .chant {
+    position: absolute;
+    left: 50%;
+    top: 30%;
+    transform: translate(-50%, -50%) scale(.6) rotate(-4deg);
+    font-size: 30px;
+    font-weight: 900;
+    color: #fff;
+    text-shadow: 0 2px 0 var(--accent), 0 0 14px rgba(43,111,158,.6);
+    white-space: nowrap;
+    letter-spacing: 1px;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .chant.show { animation: chantPop 1.2s ease-out forwards; }
+  @keyframes chantPop {
+    0%   { opacity: 0; transform: translate(-50%, -50%) scale(.6) rotate(-4deg); }
+    25%  { opacity: 1; transform: translate(-50%, -55%) scale(1.12) rotate(-4deg); }
+    55%  { opacity: 1; transform: translate(-50%, -62%) scale(1) rotate(-4deg); }
+    100% { opacity: 0; transform: translate(-50%, -78%) scale(1) rotate(-4deg); }
   }
 
   /* 結果オーバーレイ */
@@ -147,6 +169,8 @@
     <div class="cloud a"></div>
     <div class="cloud b"></div>
 
+    <div class="chant" id="chant">あした天気にな～れ</div>
+
     <div class="shoe" id="shoe">👟</div>
     <div class="arrow" id="arrow">↑</div>
     <div class="hint" id="hint">靴を上にスワイプして飛ばそう</div>
@@ -166,25 +190,25 @@
   const shoe   = document.getElementById('shoe');
   const arrow  = document.getElementById('arrow');
   const hint   = document.getElementById('hint');
+  const chant  = document.getElementById('chant');
   const result = document.getElementById('result');
   const again  = document.getElementById('again');
 
   const outcomes = [
-    { face: 'おもて', emoji: '☀️', weather: '晴れ',   msg: '靴がきれいに表向き。気持ちのいい一日になりそう。', weight: 4 },
-    { face: 'うら',   emoji: '🌧️', weather: '雨',     msg: '靴は裏返し。傘を持っていくと安心かも。',           weight: 4 },
-    { face: 'よこ',   emoji: '☁️', weather: 'くもり', msg: '靴が横向きで着地。どっちつかずの空模様。',         weight: 2 },
+    { face: 'おもて', emoji: '☀️', weather: '晴れ',   msg: '靴がきれいに表向き。気持ちのいい一日になりそう。' },
+    { face: 'うら',   emoji: '🌧️', weather: '雨',     msg: '靴は裏返し。傘を持っていくと安心かも。' },
+    { face: 'よこ',   emoji: '☁️', weather: 'くもり', msg: '靴が横向きで着地。どっちつかずの空模様。' },
   ];
 
   let dragging = false;
   let startY = 0, startX = 0;
   let curY = 0, curX = 0;
   let busy = false;
+  let flightAnim = null;
 
   function pickOutcome() {
-    const total = outcomes.reduce((s, o) => s + o.weight, 0);
-    let r = Math.random() * total;
-    for (const o of outcomes) { if ((r -= o.weight) < 0) return o; }
-    return outcomes[0];
+    // 3種類を完全に均等な確率で
+    return outcomes[Math.floor(Math.random() * outcomes.length)];
   }
 
   function pointFromEvent(e) {
@@ -198,7 +222,6 @@
     const p = pointFromEvent(e);
     startX = curX = p.x; startY = curY = p.y;
     shoe.classList.add('dragging');
-    shoe.classList.remove('flying');
     e.preventDefault();
   }
 
@@ -233,31 +256,46 @@
     busy = true;
     arrow.style.opacity = '0';
     hint.style.opacity = '0';
+    shoe.classList.remove('dragging');
+
+    // 掛け声を表示（毎回アニメーションを再生し直す）
+    chant.classList.remove('show');
+    void chant.offsetWidth;
+    chant.classList.add('show');
 
     const outcome = pickOutcome();
-    // 表裏を回転で表現：おもて=偶数回転、うら=半回転ぶん、よこ=90度
-    let spins = 2 + Math.floor(Math.random() * 2);   // 2〜3回転
-    let endRot;
-    if (outcome.face === 'うら')      endRot = spins * 360 + 180;
-    else if (outcome.face === 'よこ') endRot = spins * 360 + 90;
-    else                              endRot = spins * 360;
 
-    const driftX = dx * 0.3 + (Math.random() * 40 - 20);
-    const upH = stage.clientHeight * 0.55;
+    // つかんでいた位置（ドラッグ中の見た目）をそのまま開始点にする
+    const startOffX = (curX - startX) * 0.4;
+    const startOffY = Math.min(0, curY - startY);
+    const startRot  = startOffX * 1.2;
 
-    shoe.classList.add('flying');
-    // 上に飛んで…
-    shoe.style.transform =
-      `translate(calc(-50% + ${driftX}px), ${-upH}px) rotate(${endRot}deg)`;
+    // 着地時の回転：おもて=ぴったり一周、うら=半回転ぶん、よこ=90度
+    const spins  = 2 + Math.floor(Math.random() * 2);     // 2〜3回転
+    const extra  = outcome.face === 'うら' ? 180 : outcome.face === 'よこ' ? 90 : 0;
+    const endRot = spins * 360 + extra;
 
-    // …落ちてくる
-    setTimeout(() => {
-      shoe.style.transition = 'transform .55s cubic-bezier(.6,0,.9,.5)';
-      shoe.style.transform =
-        `translate(calc(-50% + ${driftX * 0.6}px), 0px) rotate(${endRot}deg)`;
-    }, 600);
+    // スワイプの強さで飛距離・高さが少し変わる
+    const power  = Math.min(1.4, Math.max(0.7, (startY - curY) / 220));
+    const driftX = (curX - startX) * 0.3 + (Math.random() * 50 - 25);
+    const upH    = Math.min(stage.clientHeight * 0.62, 460) * power;
 
-    setTimeout(() => showResult(outcome), 1250);
+    // 放物線を細かくサンプリングして滑らかな弧にする
+    const N = 28;
+    const frames = [];
+    for (let i = 0; i <= N; i++) {
+      const t = i / N;
+      // y: 開始位置から頂点(-upH)を通って地面(0)へ。物理的な加減速を内包
+      const y = (1 - t) * startOffY + (-4 * upH * t * (1 - t));
+      const x = startOffX + (driftX - startOffX) * t;
+      const r = startRot + (endRot - startRot) * t;
+      frames.push({ transform: `translate(calc(-50% + ${x}px), ${y}px) rotate(${r}deg)` });
+    }
+
+    shoe.style.transition = 'none';
+    if (flightAnim) flightAnim.cancel();
+    flightAnim = shoe.animate(frames, { duration: 1150, easing: 'linear', fill: 'forwards' });
+    flightAnim.onfinish = () => showResult(outcome);
   }
 
   function showResult(o) {
@@ -270,7 +308,8 @@
 
   function reset() {
     result.classList.remove('show');
-    shoe.classList.remove('flying');
+    chant.classList.remove('show');
+    if (flightAnim) { flightAnim.cancel(); flightAnim = null; }
     shoe.style.transition = 'transform .4s ease';
     shoe.style.transform = 'translate(-50%, 0) rotate(0deg)';
     setTimeout(() => {
