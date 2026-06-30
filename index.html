@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>靴占いサイト</title>
+<style>
+  :root {
+    --sky-top: #8ecbf0;
+    --sky-bottom: #c5e7fb;
+    --ink: #163a4f;
+    --accent: #2b6f9e;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: "Hiragino Maru Gothic ProN", "Yu Gothic", "Meiryo", system-ui, sans-serif;
+    color: var(--ink);
+    background: #eef6fb;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100%;
+    overflow-x: hidden;
+  }
+
+  header {
+    width: 100%;
+    max-width: 480px;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 18px 22px 10px;
+  }
+  header h1 {
+    font-size: 26px;
+    margin: 0;
+    font-weight: 800;
+    letter-spacing: 1px;
+  }
+  header .id { font-size: 13px; opacity: .7; font-style: italic; }
+
+  /* スマホ風の占い画面 */
+  .stage {
+    position: relative;
+    width: min(86vw, 360px);
+    height: min(64vh, 560px);
+    margin: 8px auto 0;
+    border-radius: 36px;
+    background: linear-gradient(180deg, var(--sky-top), var(--sky-bottom));
+    border: 4px solid #14323f;
+    box-shadow: 0 18px 40px rgba(20,50,63,.25), inset 0 2px 10px rgba(255,255,255,.4);
+    overflow: hidden;
+    touch-action: none;
+    user-select: none;
+  }
+
+  /* 雲の飾り */
+  .cloud {
+    position: absolute;
+    background: rgba(255,255,255,.75);
+    border-radius: 50px;
+    filter: blur(.5px);
+  }
+  .cloud::before, .cloud::after {
+    content: ""; position: absolute; background: inherit; border-radius: 50%;
+  }
+  .cloud.a { width: 90px; height: 28px; top: 14%; left: -20px; }
+  .cloud.a::before { width: 44px; height: 44px; top: -22px; left: 14px; }
+  .cloud.a::after  { width: 30px; height: 30px; top: -14px; left: 50px; }
+  .cloud.b { width: 70px; height: 22px; top: 30%; right: -15px; opacity: .7; }
+  .cloud.b::before { width: 34px; height: 34px; top: -16px; left: 10px; }
+  .cloud.b::after  { width: 24px; height: 24px; top: -10px; left: 38px; }
+
+  /* 靴 */
+  .shoe {
+    position: absolute;
+    left: 50%;
+    bottom: 56px;
+    font-size: 72px;
+    line-height: 1;
+    transform: translate(-50%, 0) rotate(0deg);
+    will-change: transform;
+    cursor: grab;
+    filter: drop-shadow(0 8px 6px rgba(20,50,63,.3));
+  }
+  .shoe.dragging { cursor: grabbing; }
+  .shoe.flying { transition: transform 1.15s cubic-bezier(.18,.7,.3,1); }
+
+  /* 案内 */
+  .hint {
+    position: absolute;
+    left: 0; right: 0;
+    bottom: 16px;
+    text-align: center;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--accent);
+    pointer-events: none;
+    transition: opacity .3s;
+  }
+  .arrow {
+    position: absolute;
+    left: 50%;
+    bottom: 38px;
+    transform: translateX(-50%);
+    font-size: 22px;
+    color: var(--accent);
+    animation: bob 1.2s ease-in-out infinite;
+    pointer-events: none;
+  }
+  @keyframes bob {
+    0%,100% { transform: translateX(-50%) translateY(0); opacity: .5; }
+    50%     { transform: translateX(-50%) translateY(-8px); opacity: 1; }
+  }
+
+  /* 結果オーバーレイ */
+  .result {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    background: rgba(255,255,255,.82);
+    backdrop-filter: blur(2px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .4s;
+    text-align: center;
+    padding: 20px;
+  }
+  .result.show { opacity: 1; pointer-events: auto; }
+  .result .emoji { font-size: 80px; line-height: 1; }
+  .result .face  { font-size: 15px; font-weight: 700; color: var(--accent); letter-spacing: 2px; }
+  .result .weather { font-size: 30px; font-weight: 800; margin: 2px 0; }
+  .result .msg { font-size: 14px; opacity: .8; max-width: 220px; }
+  .result button {
+    margin-top: 14px;
+    border: none;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 800;
+    font-size: 15px;
+    padding: 11px 26px;
+    border-radius: 999px;
+    cursor: pointer;
+    box-shadow: 0 6px 14px rgba(43,111,158,.4);
+    transition: transform .1s, filter .2s;
+  }
+  .result button:active { transform: translateY(1px); }
+  .result button:hover { filter: brightness(1.08); }
+
+  /* 説明 */
+  .about {
+    width: min(86vw, 360px);
+    margin: 22px auto 40px;
+    font-size: 14px;
+    line-height: 1.7;
+  }
+  .about h2 { font-size: 15px; margin: 16px 0 4px; color: var(--accent); }
+  .about p { margin: 0; }
+  .about .note { opacity: .65; font-size: 13px; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>靴占いサイト</h1>
+    <span class="id">24RD006 石井春名</span>
+  </header>
+
+  <main class="stage" id="stage">
+    <div class="cloud a"></div>
+    <div class="cloud b"></div>
+
+    <div class="shoe" id="shoe">👟</div>
+    <div class="arrow" id="arrow">↑</div>
+    <div class="hint" id="hint">靴を上にスワイプして飛ばそう</div>
+
+    <div class="result" id="result">
+      <div class="emoji" id="rEmoji">☀️</div>
+      <div class="face" id="rFace">おもて</div>
+      <div class="weather" id="rWeather">晴れ</div>
+      <div class="msg" id="rMsg"></div>
+      <button id="again">もう一度占う</button>
+    </div>
+  </main>
+
+  <section class="about">
+    <h2>あそびかた</h2>
+    <p>靴を上にスワイプして飛ばし、落ちた靴の表裏で天気を占います。</p>
+    <h2>役に立ちそう</h2>
+    <p>部屋の中で靴をはいていなくてもできる。</p>
+    <h2>役に立たない</h2>
+    <p>あくまでも占いであって予報じゃない。</p>
+    <p class="note">※ 結果はランダムです。本物の天気予報をご確認ください。</p>
+  </section>
+
+<script>
+(() => {
+  const stage  = document.getElementById('stage');
+  const shoe   = document.getElementById('shoe');
+  const arrow  = document.getElementById('arrow');
+  const hint   = document.getElementById('hint');
+  const result = document.getElementById('result');
+  const again  = document.getElementById('again');
+
+  const outcomes = [
+    { face: 'おもて', emoji: '☀️', weather: '晴れ',   msg: '靴がきれいに表向き。気持ちのいい一日になりそう。', weight: 4 },
+    { face: 'うら',   emoji: '🌧️', weather: '雨',     msg: '靴は裏返し。傘を持っていくと安心かも。',           weight: 4 },
+    { face: 'よこ',   emoji: '☁️', weather: 'くもり', msg: '靴が横向きで着地。どっちつかずの空模様。',         weight: 2 },
+  ];
+
+  let dragging = false;
+  let startY = 0, startX = 0;
+  let curY = 0, curX = 0;
+  let busy = false;
+
+  function pickOutcome() {
+    const total = outcomes.reduce((s, o) => s + o.weight, 0);
+    let r = Math.random() * total;
+    for (const o of outcomes) { if ((r -= o.weight) < 0) return o; }
+    return outcomes[0];
+  }
+
+  function pointFromEvent(e) {
+    const t = e.touches ? e.touches[0] : (e.changedTouches ? e.changedTouches[0] : e);
+    return { x: t.clientX, y: t.clientY };
+  }
+
+  function onDown(e) {
+    if (busy) return;
+    dragging = true;
+    const p = pointFromEvent(e);
+    startX = curX = p.x; startY = curY = p.y;
+    shoe.classList.add('dragging');
+    shoe.classList.remove('flying');
+    e.preventDefault();
+  }
+
+  function onMove(e) {
+    if (!dragging || busy) return;
+    const p = pointFromEvent(e);
+    curX = p.x; curY = p.y;
+    const dy = Math.min(0, p.y - startY);      // 上方向のみ
+    const dx = (p.x - startX) * 0.4;
+    shoe.style.transition = 'none';
+    shoe.style.transform =
+      `translate(calc(-50% + ${dx}px), ${dy}px) rotate(${dx * 1.2}deg)`;
+    e.preventDefault();
+  }
+
+  function onUp(e) {
+    if (!dragging || busy) return;
+    dragging = false;
+    shoe.classList.remove('dragging');
+    const dy = startY - curY;                  // 上に動いた量
+    const dx = curX - startX;
+    if (dy > 40) {
+      fly(dx);
+    } else {
+      // 戻す
+      shoe.style.transition = 'transform .3s ease';
+      shoe.style.transform = 'translate(-50%, 0) rotate(0deg)';
+    }
+  }
+
+  function fly(dx) {
+    busy = true;
+    arrow.style.opacity = '0';
+    hint.style.opacity = '0';
+
+    const outcome = pickOutcome();
+    // 表裏を回転で表現：おもて=偶数回転、うら=半回転ぶん、よこ=90度
+    let spins = 2 + Math.floor(Math.random() * 2);   // 2〜3回転
+    let endRot;
+    if (outcome.face === 'うら')      endRot = spins * 360 + 180;
+    else if (outcome.face === 'よこ') endRot = spins * 360 + 90;
+    else                              endRot = spins * 360;
+
+    const driftX = dx * 0.3 + (Math.random() * 40 - 20);
+    const upH = stage.clientHeight * 0.55;
+
+    shoe.classList.add('flying');
+    // 上に飛んで…
+    shoe.style.transform =
+      `translate(calc(-50% + ${driftX}px), ${-upH}px) rotate(${endRot}deg)`;
+
+    // …落ちてくる
+    setTimeout(() => {
+      shoe.style.transition = 'transform .55s cubic-bezier(.6,0,.9,.5)';
+      shoe.style.transform =
+        `translate(calc(-50% + ${driftX * 0.6}px), 0px) rotate(${endRot}deg)`;
+    }, 600);
+
+    setTimeout(() => showResult(outcome), 1250);
+  }
+
+  function showResult(o) {
+    document.getElementById('rEmoji').textContent   = o.emoji;
+    document.getElementById('rFace').textContent    = '靴は「' + o.face + '」';
+    document.getElementById('rWeather').textContent = o.weather;
+    document.getElementById('rMsg').textContent      = o.msg;
+    result.classList.add('show');
+  }
+
+  function reset() {
+    result.classList.remove('show');
+    shoe.classList.remove('flying');
+    shoe.style.transition = 'transform .4s ease';
+    shoe.style.transform = 'translate(-50%, 0) rotate(0deg)';
+    setTimeout(() => {
+      arrow.style.opacity = '';
+      hint.style.opacity = '';
+      busy = false;
+    }, 400);
+  }
+
+  // ポインタ操作（タッチ＆マウス）
+  shoe.addEventListener('mousedown', onDown);
+  shoe.addEventListener('touchstart', onDown, { passive: false });
+  window.addEventListener('mousemove', onMove);
+  window.addEventListener('touchmove', onMove, { passive: false });
+  window.addEventListener('mouseup', onUp);
+  window.addEventListener('touchend', onUp);
+
+  // ステージのどこでもスワイプで飛ばせるように（靴以外から始めた場合）
+  stage.addEventListener('mousedown', (e) => { if (e.target !== shoe) onDown(e); });
+  stage.addEventListener('touchstart', (e) => { if (e.target !== shoe) onDown(e); }, { passive: false });
+
+  again.addEventListener('click', reset);
+})();
+</script>
+</body>
+</html>
