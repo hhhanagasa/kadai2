@@ -321,19 +321,32 @@
     const upH   = Math.min(stage.clientHeight * 0.62, 460) * power;
 
     // 放物線を細かくサンプリングして滑らかな弧にする
-    const N = 28;
+    const N = 44;
     const frames = [];
+    // 各フレームの「時間の重み」を計算：上昇〜頂点は普通、落ちる直前ほど大きく引き伸ばす
+    const weights = [0];
+    let total = 0;
+    for (let i = 1; i <= N; i++) {
+      const s = i / N;
+      const d = Math.max(0, (s - 0.5) / 0.5);        // 落下区間(頂点以降)だけ効く 0→1
+      const w = 1 + 11 * d * d * d;                  // 着地間際を一番ゆっくりに
+      total += w;
+      weights.push(total);
+    }
     for (let i = 0; i <= N; i++) {
       const t = i / N;
       const y = -4 * upH * t * (1 - t);           // 頂点(-upH)を通って地面(0)へ
       const x = drift * t;
       const r = endRot * t;
-      frames.push({ transform: `translate(calc(-50% + ${x}px), ${y}px) rotate(${r}deg)` });
+      frames.push({
+        transform: `translate(calc(-50% + ${x}px), ${y}px) rotate(${r}deg)`,
+        offset: weights[i] / total,               // 時間配分（着地間際を引き伸ばす）
+      });
     }
 
     shoe.style.transition = 'none';
     if (flightAnim) flightAnim.cancel();
-    flightAnim = shoe.animate(frames, { duration: 1150, easing: 'linear', fill: 'forwards' });
+    flightAnim = shoe.animate(frames, { duration: 2200, easing: 'linear', fill: 'forwards' });
     flightAnim.onfinish = () => showResult(outcome);
   }
 
