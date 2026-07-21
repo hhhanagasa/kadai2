@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>靴占いサイト</title>
+<title>靴占いサイト（加速度センサー版）</title>
 <style>
   :root {
     --sky-top: #8ecbf0;
@@ -59,10 +59,14 @@
     line-height: 1;
     transform: translate(-50%, 0) rotate(0deg);
     will-change: transform;
-    cursor: grab;
     filter: drop-shadow(0 8px 6px rgba(20,50,63,.3));
   }
-  .shoe.dragging { cursor: grabbing; }
+  /* 振り待ちのあいだ、靴がプルプル準備運動 */
+  .shoe.ready { animation: wiggle 1.4s ease-in-out infinite; }
+  @keyframes wiggle {
+    0%,100% { transform: translate(-50%, 0) rotate(-5deg); }
+    50%     { transform: translate(-50%, -4px) rotate(5deg); }
+  }
 
   /* 案内 */
   .hint {
@@ -114,8 +118,8 @@
     100% { opacity: 0; transform: translate(-50%, -78%) scale(1) rotate(-4deg); }
   }
 
-  /* 結果オーバーレイ */
-  .result {
+  /* 結果オーバーレイ／スタート画面 */
+  .result, .start {
     position: absolute;
     inset: 0;
     display: flex;
@@ -136,7 +140,7 @@
   .result .face  { font-size: 15px; font-weight: 700; color: var(--accent); letter-spacing: 2px; }
   .result .weather { font-size: 30px; font-weight: 800; margin: 2px 0; }
   .result .msg { font-size: 14px; opacity: .8; max-width: 220px; }
-  .result button {
+  .result button, .start button {
     margin-top: 14px;
     border: none;
     background: var(--accent);
@@ -149,19 +153,21 @@
     box-shadow: 0 6px 14px rgba(43,111,158,.4);
     transition: transform .1s, filter .2s;
   }
-  .result button:active { transform: translateY(1px); }
-  .result button:hover { filter: brightness(1.08); }
+  .result button:active, .start button:active { transform: translateY(1px); }
+  .result button:hover, .start button:hover { filter: brightness(1.08); }
 
-  /* 説明 */
-  .about {
-    width: min(86vw, 360px);
-    margin: 22px auto 40px;
-    font-size: 14px;
-    line-height: 1.7;
+  /* スタート画面（センサー許可用） */
+  .start {
+    opacity: 1;
+    pointer-events: auto;
+    background: linear-gradient(180deg, var(--sky-top), var(--sky-bottom));
   }
-  .about h2 { font-size: 15px; margin: 16px 0 4px; color: var(--accent); }
-  .about p { margin: 0; }
-  .about .note { opacity: .65; font-size: 13px; }
+  .start.hide { opacity: 0; pointer-events: none; }
+  .start .emoji { font-size: 80px; line-height: 1; animation: bob 1.6s ease-in-out infinite; }
+  .start .startTitle { font-size: 26px; font-weight: 900; color: var(--accent); margin: 6px 0 2px; letter-spacing: 2px; }
+  .start .startMsg { font-size: 15px; font-weight: 700; color: var(--ink); line-height: 1.6; }
+  .start button { font-size: 16px; padding: 13px 34px; margin-top: 18px; }
+  .start .startNote { margin-top: 12px; font-size: 12px; opacity: .6; max-width: 240px; line-height: 1.5; }
 </style>
 </head>
 <body>
@@ -173,7 +179,7 @@
 
     <div class="shoe" id="shoe">👟</div>
     <div class="arrow" id="arrow">↑</div>
-    <div class="hint" id="hint">靴を上にスワイプして飛ばそう</div>
+    <div class="hint" id="hint">スマホを上にシュッと振り上げて飛ばそう</div>
 
     <div class="result" id="result">
       <div class="emoji" id="rEmoji">☀️</div>
@@ -182,81 +188,121 @@
       <div class="msg" id="rMsg"></div>
       <button id="again">もう一度占う</button>
     </div>
+
+    <div class="start" id="start">
+      <div class="emoji">👟</div>
+      <div class="startTitle">くつ占い</div>
+      <div class="startMsg">スマホを上に<br>シュッと振り上げて<br>靴を飛ばそう</div>
+      <button id="startBtn">はじめる</button>
+      <div class="startNote">※ 靴を蹴り上げるように、スマホを振ってね<br>（センサーが使えない時はスワイプでもOK）</div>
+    </div>
   </main>
 
 <script>
 (() => {
-  const stage  = document.getElementById('stage');
-  const shoe   = document.getElementById('shoe');
-  const arrow  = document.getElementById('arrow');
-  const hint   = document.getElementById('hint');
-  const chant  = document.getElementById('chant');
-  const result = document.getElementById('result');
-  const again  = document.getElementById('again');
+  const stage    = document.getElementById('stage');
+  const shoe     = document.getElementById('shoe');
+  const arrow    = document.getElementById('arrow');
+  const hint     = document.getElementById('hint');
+  const chant    = document.getElementById('chant');
+  const result   = document.getElementById('result');
+  const again    = document.getElementById('again');
+  const start     = document.getElementById('start');
+  const startBtn  = document.getElementById('startBtn');
 
   const outcomes = [
-    { face: 'おもて', emoji: '☀️', weather: '晴れ',   msg: '靴がきれいに表向き。気持ちのいい一日になりそう。' },
+    { face: 'おもて', emoji: '🌞', weather: '晴れ',   msg: '靴がきれいに表向き。気持ちのいい一日になりそう。' },
     { face: 'うら',   emoji: '🌧️', weather: '雨',     msg: '靴は裏返し。傘を持っていくと安心かも。' },
     { face: 'よこ',   emoji: '☁️', weather: 'くもり', msg: '靴が横向きで着地。どっちつかずの空模様。' },
   ];
 
-  let dragging = false;
-  let startY = 0, startX = 0;
-  let curY = 0, curX = 0;
   let busy = false;
   let flightAnim = null;
+  let motionOn = false;
 
   function pickOutcome() {
     // 3種類を完全に均等な確率で
     return outcomes[Math.floor(Math.random() * outcomes.length)];
   }
 
+  // ===== 加速度センサーで「振り上げ」を検知 =====
+  // 強い動きのピークをため込み、動きが収まった瞬間に発射する
+  const SHAKE_THRESHOLD = 16;  // 発射に必要な加速度の強さ（m/s²）
+  let peakAccel = 0;           // 一連の振りの最大加速度
+  let settleTimer = null;      // 動きが収まったか判定するタイマー
+
+  function onMotion(e) {
+    if (busy) return;
+    // 重力を除いた加速度を優先。無ければ重力込みから約1G(9.8)を差し引く
+    let a = e.acceleration;
+    let mag;
+    if (a && a.x != null) {
+      mag = Math.hypot(a.x || 0, a.y || 0, a.z || 0);
+    } else {
+      a = e.accelerationIncludingGravity || {};
+      mag = Math.abs(Math.hypot(a.x || 0, a.y || 0, a.z || 0) - 9.8);
+    }
+
+    if (mag > SHAKE_THRESHOLD) {
+      peakAccel = Math.max(peakAccel, mag);
+      // 動きが続くうちはリセットし続け、止まった瞬間に発射
+      clearTimeout(settleTimer);
+      settleTimer = setTimeout(() => {
+        const power = Math.min(1.4, Math.max(0.75, peakAccel / 26));
+        peakAccel = 0;
+        fly(power);
+      }, 120);
+    }
+  }
+
+  // ===== スワイプ操作（PC・非対応端末向けフォールバック） =====
+  let dragging = false;
+  let startY = 0, startX = 0, curY = 0, curX = 0;
+
   function pointFromEvent(e) {
     const t = e.touches ? e.touches[0] : (e.changedTouches ? e.changedTouches[0] : e);
     return { x: t.clientX, y: t.clientY };
   }
-
   function onDown(e) {
     if (busy) return;
     dragging = true;
     const p = pointFromEvent(e);
     startX = curX = p.x; startY = curY = p.y;
-    shoe.classList.add('dragging');
     e.preventDefault();
   }
-
   function onMove(e) {
     if (!dragging || busy) return;
     const p = pointFromEvent(e);
     curX = p.x; curY = p.y;
-    const dy = Math.min(0, p.y - startY);      // 上方向のみ
+    const dy = Math.min(0, p.y - startY);
     const dx = (p.x - startX) * 0.4;
+    shoe.classList.remove('ready');
     shoe.style.transition = 'none';
-    shoe.style.transform =
-      `translate(calc(-50% + ${dx}px), ${dy}px) rotate(${dx * 1.2}deg)`;
+    shoe.style.transform = `translate(calc(-50% + ${dx}px), ${dy}px) rotate(${dx * 1.2}deg)`;
     e.preventDefault();
   }
-
-  function onUp(e) {
+  function onUp() {
     if (!dragging || busy) return;
     dragging = false;
-    shoe.classList.remove('dragging');
-    const dy = startY - curY;                  // 上に動いた量
-    const dx = curX - startX;
+    const dy = startY - curY;
     if (dy > 40) {
-      fly(dx);
+      const power  = Math.min(1.4, Math.max(0.75, dy / 220));
+      const driftX = (curX - startX) * 0.3;
+      fly(power, driftX);
     } else {
-      // 戻す
       shoe.style.transition = 'transform .3s ease';
       shoe.style.transform = 'translate(-50%, 0) rotate(0deg)';
     }
   }
 
-  function fly(dx) {
+  // ===== 飛ばす =====
+  function fly(power, driftX) {
+    if (busy) return;
     busy = true;
+    dragging = false;
+    shoe.classList.remove('ready');
     arrow.style.opacity = '0';
     hint.style.opacity = '0';
-    shoe.classList.remove('dragging');
 
     // 掛け声を表示（毎回アニメーションを再生し直す）
     chant.classList.remove('show');
@@ -265,36 +311,42 @@
 
     const outcome = pickOutcome();
 
-    // つかんでいた位置（ドラッグ中の見た目）をそのまま開始点にする
-    const startOffX = (curX - startX) * 0.4;
-    const startOffY = Math.min(0, curY - startY);
-    const startRot  = startOffX * 1.2;
-
     // 着地時の回転：おもて=ぴったり一周、うら=半回転ぶん、よこ=90度
     const spins  = 2 + Math.floor(Math.random() * 2);     // 2〜3回転
     const extra  = outcome.face === 'うら' ? 180 : outcome.face === 'よこ' ? 90 : 0;
     const endRot = spins * 360 + extra;
 
-    // スワイプの強さで飛距離・高さが少し変わる
-    const power  = Math.min(1.4, Math.max(0.7, (startY - curY) / 220));
-    const driftX = (curX - startX) * 0.3 + (Math.random() * 50 - 25);
-    const upH    = Math.min(stage.clientHeight * 0.62, 460) * power;
+    // 振りの強さで飛距離・高さが変わる
+    const drift = (driftX != null ? driftX : 0) + (Math.random() * 60 - 30);
+    const upH   = Math.min(stage.clientHeight * 0.62, 460) * power;
 
     // 放物線を細かくサンプリングして滑らかな弧にする
-    const N = 28;
+    const N = 44;
     const frames = [];
+    // 各フレームの「時間の重み」を計算：上昇〜頂点は普通、落ちる直前ほど大きく引き伸ばす
+    const weights = [0];
+    let total = 0;
+    for (let i = 1; i <= N; i++) {
+      const s = i / N;
+      const d = Math.max(0, (s - 0.5) / 0.5);        // 落下区間(頂点以降)だけ効く 0→1
+      const w = 1 + 11 * d * d * d;                  // 着地間際を一番ゆっくりに
+      total += w;
+      weights.push(total);
+    }
     for (let i = 0; i <= N; i++) {
       const t = i / N;
-      // y: 開始位置から頂点(-upH)を通って地面(0)へ。物理的な加減速を内包
-      const y = (1 - t) * startOffY + (-4 * upH * t * (1 - t));
-      const x = startOffX + (driftX - startOffX) * t;
-      const r = startRot + (endRot - startRot) * t;
-      frames.push({ transform: `translate(calc(-50% + ${x}px), ${y}px) rotate(${r}deg)` });
+      const y = -4 * upH * t * (1 - t);           // 頂点(-upH)を通って地面(0)へ
+      const x = drift * t;
+      const r = endRot * t;
+      frames.push({
+        transform: `translate(calc(-50% + ${x}px), ${y}px) rotate(${r}deg)`,
+        offset: weights[i] / total,               // 時間配分（着地間際を引き伸ばす）
+      });
     }
 
     shoe.style.transition = 'none';
     if (flightAnim) flightAnim.cancel();
-    flightAnim = shoe.animate(frames, { duration: 1150, easing: 'linear', fill: 'forwards' });
+    flightAnim = shoe.animate(frames, { duration: 2200, easing: 'linear', fill: 'forwards' });
     flightAnim.onfinish = () => showResult(outcome);
   }
 
@@ -309,6 +361,8 @@
   function reset() {
     result.classList.remove('show');
     chant.classList.remove('show');
+    peakAccel = 0;
+    clearTimeout(settleTimer);
     if (flightAnim) { flightAnim.cancel(); flightAnim = null; }
     shoe.style.transition = 'transform .4s ease';
     shoe.style.transform = 'translate(-50%, 0) rotate(0deg)';
@@ -316,18 +370,49 @@
       arrow.style.opacity = '';
       hint.style.opacity = '';
       busy = false;
+      if (motionOn) shoe.classList.add('ready');
     }, 400);
   }
 
-  // ポインタ操作（タッチ＆マウス）
+  // ===== センサー開始（iOSは許可が必要） =====
+  function enableMotion() {
+    if (motionOn) return Promise.resolve(true);
+    if (typeof DeviceMotionEvent === 'undefined') return Promise.resolve(false);
+
+    const startListening = () => {
+      window.addEventListener('devicemotion', onMotion);
+      motionOn = true;
+      return true;
+    };
+
+    // iOS 13+ は明示的な許可が必要
+    if (typeof DeviceMotionEvent.requestPermission === 'function') {
+      return DeviceMotionEvent.requestPermission()
+        .then((state) => state === 'granted' ? startListening() : false)
+        .catch(() => false);
+    }
+    return Promise.resolve(startListening());
+  }
+
+  startBtn.addEventListener('click', () => {
+    enableMotion().then((ok) => {
+      start.classList.add('hide');
+      if (ok) {
+        shoe.classList.add('ready');
+      } else {
+        // センサーが使えない環境ではスワイプ操作に切り替える
+        hint.textContent = '靴を上にスワイプして飛ばそう';
+      }
+    });
+  });
+
+  // スワイプ操作（フォールバック／PC）
   shoe.addEventListener('mousedown', onDown);
   shoe.addEventListener('touchstart', onDown, { passive: false });
   window.addEventListener('mousemove', onMove);
   window.addEventListener('touchmove', onMove, { passive: false });
   window.addEventListener('mouseup', onUp);
   window.addEventListener('touchend', onUp);
-
-  // ステージのどこでもスワイプで飛ばせるように（靴以外から始めた場合）
   stage.addEventListener('mousedown', (e) => { if (e.target !== shoe) onDown(e); });
   stage.addEventListener('touchstart', (e) => { if (e.target !== shoe) onDown(e); }, { passive: false });
 
